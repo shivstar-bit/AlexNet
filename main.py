@@ -1,91 +1,47 @@
-import torch.nn as nn
 import torch
+import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset , DataLoader
-from torch.nn.modules.activation import ReLU
-import torchvision
-from torchvision import transforms
 
+from src.dataset import get_dataloaders
+from src.model import AlexNet
+from src.train import train_model
 
-train_transform=transforms.Compose([transforms.RandomHorizontalFlip(),
-                                    transforms.RandomCrop(32,padding=4),
-                                    transforms.ColorJitter(brightness=0.2,contrast=0.2,saturation=0.2),
-                                    transforms.ToTensor(),
-                                    transforms.Normalize(mean=(0.4914, 0.4822, 0.4465),std=(0.2470, 0.2435, 0.2616))])
+def main():
+    # Detect device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
-validation_transform=transforms.Compose(transforms.ToTensor(),
-                                         transforms.Normalize(mean=(0.4914, 0.4822, 0.4465),std=(0.2470, 0.2435, 0.2616)))    
+    # 1. Load Data
+    print("Loading datasets...")
+    train_loader, validation_loader = get_dataloaders(batch_size=64, num_workers=2, data_dir='./data')
 
-train_dataset= torchvision.datasets.CIFAR10(root='./data',train=True,download=True,transform=train_transform)
-validation_dataset=torchvision.datasets.CIFAR10(root='./data',train=False,download=True,transform=validation_transform)
+    # 2. Initialize Model, Loss, Optimizer, and Scheduler
+    print("Initializing model...")
+    model = AlexNet()
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
 
+    # 3. Train Model
+    num_epochs = 30
+    print(f"Starting training for {num_epochs} epochs...")
+    train_model(
+        model=model,
+        train_loader=train_loader,
+        validation_loader=validation_loader,
+        criterion=criterion,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        num_epochs=num_epochs,
+        device=device
+    )
+    
+    # 4. Save Model
+    model_save_path = "alexnet_cifar10.pth"
+    torch.save(model.state_dict(), model_save_path)
+    print(f"Model saved to {model_save_path}")
+    
+    print("Training complete!")
 
-train_loader=DataLoader(train_dataset,batch_size=64,shuffle=True,num_workers=2)
-validation_loader=DataLoader(validation_dataset,batch_size=64,shuffle=False,num_workers=2)
-
-
-
-class AlexNet(nn.Module):
-    def __init__(self):
-        super(AlexNet,self).__init__()
-        self.feature=nn.Sequential(
-            nn.Conv2d(3,64,kernel_size=3,stride=1,padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2,stride=2),
-
-            nn.Conv2d(64,192,kernel_size=3,stride=1,padding=1),
-            nn.BatchNorm2d(192),
-            nn.Relu(),
-            nn.MaxPool2d(kernel_size=2,stride=2),
-
-            nn.Conv2d(192,384,kernel_size=3,stride=1,padding=1),
-            nn.BatchNorm2d(384),
-            nn.ReLu(),
-        
-
-            nn.Conv2d(384,256,kernel_size=3,stride=1,padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLu(),
-            
-
-            nn.Conv2d(256,256,kernel_size=3,stride=3,padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2,stride=2),
-
-        )
-        self.classification=nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(256*4*4,1024),
-            nn.ReLU(),
-            nn.Dropout(p=0.5),
-            nn.Linear(1024,512),
-            nn.ReLU(),
-            nn.Dropout(p=0.5),
-            nn.Linear(512,10)
-        )
-
-    def forward(self,x):
-        x=self.feature(x)   
-        x=self.classification(x)
-        return x   
-
-            
-
-
-
-
-
-
-        
-
-
-
-
-
-
-
-
-                                         
-                                                                        
+if __name__ == "__main__":
+    main()
